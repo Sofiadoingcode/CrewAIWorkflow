@@ -1,0 +1,8 @@
+crewai
+llm>=0.32.1
+pydantic>=2
+python-dotenv>=1.2.3
+
+[dev]
+pytest
+ruff

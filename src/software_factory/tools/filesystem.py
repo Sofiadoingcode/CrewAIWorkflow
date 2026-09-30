@@ -1,0 +1,40 @@
+from pathlib import Path
+
+
+def read_file(repo_path: str, relative_path: str) -> str:
+    path = Path(repo_path) / relative_path
+
+    return path.read_text(encoding="utf-8")
+
+
+def write_file(
+    repo_path: str,
+    relative_path: str,
+    content: str,
+) -> str:
+
+    path = Path(repo_path) / relative_path
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    path.write_text(
+        content,
+        encoding="utf-8",
+    )
+
+    return str(path)
+
+
+def list_files(repo_path: str) -> list[str]:
+
+    root = Path(repo_path)
+
+    return [
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if path.is_file()
+        and ".git" not in path.parts
+    ]
