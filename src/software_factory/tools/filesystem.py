@@ -38,3 +38,27 @@ def list_files(repo_path: str) -> list[str]:
         if path.is_file()
         and ".git" not in path.parts
     ]
+
+def read_repository(
+    repo_path: str,
+    max_file_chars: int = 4000,
+) -> str:
+
+    sections = []
+
+    for relative_path in sorted(list_files(repo_path)):
+
+        if "__pycache__" in relative_path or relative_path.startswith("."):
+            continue
+
+        try:
+            content = read_file(repo_path, relative_path)
+        except UnicodeDecodeError:
+            continue
+
+        sections.append(
+            f"--- {relative_path} ---\n"
+            f"{content[:max_file_chars]}"
+        )
+
+    return "\n\n".join(sections) or "(empty repository)"

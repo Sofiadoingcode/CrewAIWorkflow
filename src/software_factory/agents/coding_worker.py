@@ -1,12 +1,15 @@
 from crewai import Agent, Crew, Task
 
 from software_factory.llm import local_llm
+from software_factory.tools.crew_tools import create_write_tool
+from software_factory.tools.filesystem import read_repository
 
 
 def create_coding_worker(
     worker_name: str,
     role: str,
     goal: str,
+    repo_path: str,
 ) -> Agent:
 
     return Agent(
@@ -20,6 +23,7 @@ def create_coding_worker(
             "parts of the repository."
         ),
         llm=local_llm,
+        tools=[create_write_tool(repo_path)],
         verbose=True,
         allow_delegation=False,
     )
@@ -39,6 +43,7 @@ def run_coding_worker(
         worker_name,
         role,
         goal,
+        repo_path,
     )
 
     task = Task(
@@ -50,6 +55,10 @@ Worker:
 Repository:
 
 {repo_path}
+
+Repository files:
+
+{read_repository(repo_path)}
 
 Feature:
 
@@ -67,21 +76,25 @@ Implement ONLY the tickets assigned to you.
 
 You MUST:
 
-1. Inspect the existing repository.
+1. Inspect the existing repository files above.
 2. Identify your assigned tickets.
 3. Implement the requested functionality.
 4. Modify the required source files.
 5. Add or update tests.
-6. Run relevant tests.
-7. Run static checks where available.
-8. Review your changes.
-9. Report every modified file.
-10. Report test results.
-11. Report remaining risks.
+6. Review your changes.
+7. Report every modified file.
+8. Report remaining risks.
 
 Do not implement tickets belonging to another worker.
 
 Do not modify unrelated files.
+
+To change a file you MUST call the write_repository_file
+tool with the relative path and the COMPLETE new file content.
+Call it once per file. Writing code in your answer does
+NOT change the repository.
+
+Only report files you actually wrote with the tool.
 
 Follow the architecture and ticket boundaries.
 """,
@@ -93,9 +106,6 @@ Implementation report containing:
 - Files modified
 - Implementation summary
 - Tests added
-- Tests executed
-- Test results
-- Static analysis
 - Risks
 - Remaining work
 """,

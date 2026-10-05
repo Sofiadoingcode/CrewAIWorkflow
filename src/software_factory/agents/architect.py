@@ -2,6 +2,7 @@
 from crewai import Agent, Crew, Task
 
 from software_factory.llm import local_llm
+from software_factory.tools.filesystem import read_repository
 
 
 def run_architect(
@@ -30,6 +31,10 @@ def run_architect(
 Analyze the repository:
 
 {repo_path}
+
+Repository files:
+
+{read_repository(repo_path)}
 
 Requested feature:
 

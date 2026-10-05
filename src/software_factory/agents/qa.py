@@ -1,6 +1,10 @@
+import sys
+
 from crewai import Agent, Crew, Task
 
 from software_factory.llm import local_llm
+from software_factory.tools.filesystem import read_repository
+from software_factory.tools.shell import run_command
 
 
 def run_qa(
@@ -26,11 +30,20 @@ def run_qa(
         allow_delegation=False,
     )
 
+    test_run = run_command(
+        f"{sys.executable} -m pytest -q",
+        cwd=repo_path,
+    )
+
     task = Task(
         description=f"""
 Repository:
 
 {repo_path}
+
+Repository files:
+
+{read_repository(repo_path)}
 
 Feature:
 
@@ -48,6 +61,11 @@ Worker results:
 
 {worker_results}
 
+Test run (pytest, actually executed):
+
+{test_run["stdout"]}
+{test_run["stderr"]}
+
 Validate:
 
 1. Unit tests
@@ -64,6 +82,7 @@ Validate:
 IMPORTANT:
 
 Do not claim that a test passed unless it was actually executed.
+Base all test results ONLY on the test run above.
 """,
         expected_output="""
 Quality report containing:

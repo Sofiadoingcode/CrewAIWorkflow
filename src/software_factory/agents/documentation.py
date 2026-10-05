@@ -1,6 +1,7 @@
 from crewai import Agent, Crew, Task
 
 from software_factory.llm import local_llm
+from software_factory.tools.filesystem import read_repository
 
 
 def run_documentation(
@@ -31,6 +32,10 @@ def run_documentation(
 Repository:
 
 {repo_path}
+
+Repository files:
+
+{read_repository(repo_path)}
 
 Feature:
 
