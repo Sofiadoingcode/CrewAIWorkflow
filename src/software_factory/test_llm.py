@@ -1,9 +1,11 @@
 from crewai import Agent, Crew, Task
 
-from .llm import local_llm
+from .llm import coder_llm, reasoning_llm
 
 
-def main():
+def check(name, llm):
+    print(f"\n=== {name}: {llm.model} at {llm.base_url} ===")
+
     agent = Agent(
         role="Software Architect",
         goal="Explain software architecture clearly.",
@@ -11,7 +13,7 @@ def main():
             "You are a senior software architect "
             "with extensive software engineering experience."
         ),
-        llm=local_llm,
+        llm=llm,
         verbose=True,
         allow_delegation=False,
     )
@@ -38,6 +40,11 @@ def main():
 
     print("\n=== RESULT ===")
     print(result)
+
+
+def main():
+    check("Endpoint 1", reasoning_llm)
+    check("Endpoint 2", coder_llm)
 
 
 if __name__ == "__main__":

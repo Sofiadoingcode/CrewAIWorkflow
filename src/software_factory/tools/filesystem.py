@@ -51,6 +51,9 @@ def read_repository(
         if "__pycache__" in relative_path or relative_path.startswith("."):
             continue
 
+        if relative_path.startswith("docs/factory/"):
+            continue
+
         try:
             content = read_file(repo_path, relative_path)
         except UnicodeDecodeError:

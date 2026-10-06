@@ -1,6 +1,6 @@
 from crewai import Agent, Crew, Task
 
-from software_factory.llm import local_llm
+from software_factory.llm import reasoning_llm
 from software_factory.tools.filesystem import read_repository
 
 
@@ -23,7 +23,7 @@ def run_deployment(
             "containers, configuration, health checks, deployment "
             "systems, and production operations."
         ),
-        llm=local_llm,
+        llm=reasoning_llm,
         verbose=True,
         allow_delegation=False,
     )

@@ -1,525 +1,187 @@
-# demo.py
-
-import json
+import sys
 import traceback
-from pprint import pprint
+from pathlib import Path
 
 from software_factory.flow import SoftwareFactoryFlow
+from software_factory.llm import coder_llm, reasoning_llm
+from software_factory.tools.filesystem import write_file
+from software_factory.tools.git import git
+from software_factory.tools.shell import run_command
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# ============================================================
-# Pretty printing helpers
-# ============================================================
+DEFAULT_REPO = PROJECT_ROOT.parent / "crewai-demo"
+
+FEATURE_REQUEST = (
+    'Add a function farewell(name) in greeting.py that returns "Goodbye {name}", '
+    "and a pytest test for it in test_greeting.py."
+)
+
+SEED_FILES = {
+    "greeting.py": 'def greet(name):\n    return f"Hello {name}"\n',
+    "test_greeting.py": (
+        "from greeting import greet\n\n\n"
+        "def test_greet():\n"
+        '    assert greet("Bob") == "Hello Bob"\n'
+    ),
+    ".gitignore": "__pycache__/\n.DS_Store\n",
+}
+
+ARTIFACTS = [
+    ("Architecture", "architecture.md"),
+    ("Tech lead", "tickets.md"),
+    ("Implementation", "implementation.md"),
+    ("Testing & quality", "quality_report.md"),
+    ("Documentation", "documentation.md"),
+    ("Deployment validation", "deployment_checklist.md"),
+]
+
 
 def banner(title: str):
-    print("\n")
-    print("╔" + "═" * 78 + "╗")
-    print(f"║ {title:<76} ║")
-    print("╚" + "═" * 78 + "╝")
+    print("\n" + "=" * 80)
+    print(title)
+    print("=" * 80)
 
 
-def section(title: str):
-    print("\n" + "─" * 80)
-    print(f"▶ {title}")
-    print("─" * 80)
+def check(label: str, ok: bool, detail: str = ""):
+    status = "PASS" if ok else "FAIL"
+    print(f"  [{status}] {label}" + (f": {detail}" if detail else ""))
 
 
-def print_value(label: str, value):
-    print(f"\n{label}:")
-    print("  " + "-" * 72)
+def prepare_repo(repo: Path) -> bool:
 
-    if isinstance(value, (dict, list)):
-        try:
-            formatted = json.dumps(value, indent=2, default=str)
-            for line in formatted.splitlines():
-                print("  " + line)
-        except Exception:
-            pprint(value)
-    else:
-        print(f"  {value}")
+    if not repo.exists():
 
-    print("  " + "-" * 72)
+        print(f"Creating demo repository {repo}")
+
+        for name, content in SEED_FILES.items():
+            write_file(str(repo), name, content)
+
+        git(str(repo), "init", "-b", "main")
+        git(str(repo), "add", "-A")
+        result = git(str(repo), "commit", "-m", "Initial")
+
+        if not result["success"]:
+            print(result["stderr"])
+            return False
+
+        return True
+
+    if not git(str(repo), "rev-parse", "--git-dir")["success"]:
+        print(f"{repo} exists but is not a git repository.")
+        return False
+
+    if git(str(repo), "status", "--porcelain")["stdout"].strip():
+        print(
+            f"{repo} has uncommitted changes. Clean it, or delete the folder\n"
+            "to let the demo create a fresh one."
+        )
+        return False
+
+    switched = git(str(repo), "checkout", "main")
+
+    if not switched["success"]:
+        print(switched["stderr"])
+        return False
+
+    print(f"Using demo repository {repo} (branch main)")
+
+    return True
 
 
-def check(label: str, condition: bool):
-    status = "✓ PASS" if condition else "✗ EMPTY"
-    print(f"  [{status}] {label}")
+def changed_code_files(repo: Path) -> list[str]:
 
+    tracked = git(str(repo), "diff", "--name-only", "main")["stdout"].split()
+    untracked = git(
+        str(repo), "ls-files", "--others", "--exclude-standard"
+    )["stdout"].split()
 
-# ============================================================
-# Main demo
-# ============================================================
+    return sorted(
+        name
+        for name in set(tracked) | set(untracked)
+        if not name.startswith("docs/factory/")
+    )
+
 
 def main():
 
-    banner("AI SOFTWARE FACTORY — LIVE DEMONSTRATION")
+    repo = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) > 1 else DEFAULT_REPO
+
+    banner("SOFTWARE FACTORY DEMO")
 
     print(
-        """
-This demo showcases the complete multi-agent software engineering workflow.
+        f"""
+Target repository: {repo}
+Feature request:   {FEATURE_REQUEST}
 
-                  ┌──────────────────────┐
-                  │   Feature Request    │
-                  └──────────┬───────────┘
-                             │
-                             ▼
-                  ┌──────────────────────┐
-                  │   SOFTWARE ARCHITECT │
-                  │                      │
-                  │ Architecture + ADRs  │
-                  │ APIs + Deployment    │
-                  └──────────┬───────────┘
-                             │
-                             ▼
-                  ┌──────────────────────┐
-                  │     TECH LEAD        │
-                  │                      │
-                  │ Tickets + Scope      │
-                  │ Dependencies + DoD   │
-                  └──────────┬───────────┘
-                             │
-                             ▼
-              ┌──────────────┴──────────────┐
-              │                             │
-              ▼                             ▼
-       ┌───────────────┐             ┌───────────────┐
-       │ CODING WORKER │             │ CODING WORKER │
-       │       #1      │             │       #2      │
-       └───────┬───────┘             └───────┬───────┘
-               │                             │
-               └──────────────┬──────────────┘
-                              │
-                              ▼
-                    ┌──────────────────┐
-                    │ QA / INTEGRATION │
-                    │                  │
-                    │ Tests + Quality  │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │ DOCUMENTATION    │
-                    │                  │
-                    │ README + API     │
-                    │ Runbook          │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │ DEPLOYMENT       │
-                    │ VALIDATION       │
-                    │                  │
-                    │ Config + Checks  │
-                    └──────────────────┘
+Endpoint 1: {reasoning_llm.model} at {reasoning_llm.base_url}
+            Architect, Tech Lead, QA, Documentation, Deployment
+Endpoint 2: {coder_llm.model} at {coder_llm.base_url}
+            the two coding workers
 
-The important idea:
-
-CrewAI performs the reasoning and agent orchestration.
-Deterministic Python/Git/shell operations perform actual repository work.
+Six phases run in order, then the diff is shown and you are asked
+whether to commit. A run takes about 8 minutes.
 """
     )
 
-    # ========================================================
-    # Demo input
-    # ========================================================
-
-    banner("1. FEATURE REQUEST")
-
-    repo_path = "../my-project"
-
-    feature_request = """
-Build user authentication for the application.
-
-Requirements:
-
-1. Users can register using email and password.
-2. Users can log in using email and password.
-3. The API uses JWT authentication.
-4. Passwords must be securely hashed.
-5. Protected API endpoints reject unauthenticated requests.
-6. Add automated tests.
-7. Document the authentication API.
-8. Provide deployment/environment configuration.
-"""
-
-    print_value("Repository", repo_path)
-    print_value("Requested feature", feature_request)
-
-    # ========================================================
-    # Create workflow
-    # ========================================================
-
-    banner("2. STARTING SOFTWARE FACTORY")
-
-    print("Creating SoftwareFactoryFlow...")
-
-    try:
-        flow = SoftwareFactoryFlow()
-
-        print("✓ Flow created successfully.")
-        print(f"  Flow type: {type(flow).__name__}")
-
-    except Exception as exc:
-        print("✗ Could not create flow.")
-        print(f"{type(exc).__name__}: {exc}")
-        traceback.print_exc()
+    if not prepare_repo(repo):
         return
 
-    # ========================================================
-    # Run workflow
-    # ========================================================
-
-    banner("3. EXECUTING MULTI-AGENT WORKFLOW")
-
-    print(
-        """
-The following phases will now execute:
-
-  [1] Architecture
-  [2] Technical planning
-  [3] Parallel implementation
-  [4] QA / testing
-  [5] Documentation
-  [6] Deployment validation
-
-CrewAI's verbose output will appear below.
-"""
-    )
+    flow = SoftwareFactoryFlow()
 
     try:
-
-        result = flow.kickoff(
+        flow.kickoff(
             inputs={
-                "repo_path": repo_path,
-                "feature_request": feature_request,
+                "repo_path": str(repo),
+                "feature_request": FEATURE_REQUEST,
             }
         )
-
-        print("\n✓ FLOW EXECUTION FINISHED")
-
-    except Exception as exc:
-
-        print("\n✗ FLOW EXECUTION FAILED")
-        print(f"\nException: {type(exc).__name__}: {exc}")
-
-        print("\nFull traceback:")
+    except Exception:
         traceback.print_exc()
+        print("\nThe flow failed. Results below show what was produced before it.")
 
-        print(
-            """
-The workflow failed, but we will still inspect the state that
-was produced before the failure.
-"""
-        )
+    banner("ARTIFACTS")
 
-        result = None
+    for responsibility, name in ARTIFACTS:
+        path = repo / "docs" / "factory" / name
+        print(f"  {responsibility:<24} {path if path.exists() else 'missing'}")
 
-    # ========================================================
-    # Architecture
-    # ========================================================
-
-    banner("4. ARCHITECTURE ARTIFACT")
-
-    architecture = getattr(flow.state, "architecture", None)
-
-    if architecture:
-        print_value("Architecture", architecture)
-
-        print(
-            """
-This artifact demonstrates the Architecture responsibility:
-
-  ✓ Component decomposition
-  ✓ Component responsibilities
-  ✓ API/interface contracts
-  ✓ Deployment topology
-  ✓ Architecture decisions
-  ✓ Risks and assumptions
-"""
-        )
-    else:
-        print("No architecture artifact was produced.")
-
-    # ========================================================
-    # Technical planning
-    # ========================================================
-
-    banner("5. TECHNICAL LEAD / TICKET PLAN")
-
-    tickets = getattr(flow.state, "tickets", None)
-
-    if tickets:
-        print_value("Implementation tickets", tickets)
-
-        print(
-            """
-The technical lead is expected to establish:
-
-  ✓ Incremental tickets
-  ✓ Clear scope boundaries
-  ✓ Out-of-scope boundaries
-  ✓ Acceptance criteria
-  ✓ Definition of Done
-  ✓ Dependencies
-  ✓ File/path ownership
-
-This allows implementation work to be split between workers
-without having every worker modify the same files.
-"""
-        )
-
-    else:
-        print("No ticket plan was produced.")
-
-    # ========================================================
-    # Worker results
-    # ========================================================
-
-    banner("6. PARALLEL IMPLEMENTATION WORKERS")
-
-    worker_results = getattr(flow.state, "worker_results", None)
-
-    if worker_results:
-
-        print_value("Coding worker results", worker_results)
-
-        print(
-            """
-The implementation stage is designed around multiple workers.
-
-Conceptually:
-
-       TECH LEAD
-           │
-           ├───────────────┐
-           │               │
-           ▼               ▼
-      Worker #1       Worker #2
-           │               │
-           ▼               ▼
-       Worktree #1     Worktree #2
-           │               │
-           └───────┬───────┘
-                   ▼
-              Integration
-
-Using isolated worktrees prevents workers from accidentally
-overwriting each other's changes.
-"""
-        )
-
-    else:
-        print(
-            """
-No worker results are currently stored in the state.
-
-This is expected if the current flow.py only implements
-architecture and planning so far.
-"""
-        )
-
-    # ========================================================
-    # Quality
-    # ========================================================
-
-    banner("7. QA / QUALITY REPORT")
-
-    quality = getattr(flow.state, "quality_report", None)
-
-    if quality:
-        print_value("Quality report", quality)
-
-        print(
-            """
-The QA stage should demonstrate:
-
-  ✓ Automated test execution
-  ✓ Test results
-  ✓ Static checks
-  ✓ Integration checks
-  ✓ Detected risks
-  ✓ Remaining issues
-"""
-        )
-
-    else:
-        print("No quality report was produced yet.")
-
-    # ========================================================
-    # Documentation
-    # ========================================================
-
-    banner("8. DOCUMENTATION ARTIFACT")
-
-    documentation = getattr(flow.state, "documentation", None)
-
-    if documentation:
-        print_value("Documentation", documentation)
-
-        print(
-            """
-Documentation should cover:
-
-  ✓ README changes
-  ✓ API usage
-  ✓ Configuration
-  ✓ Operational/runbook information
-  ✓ Architecture/design documentation
-"""
-        )
-
-    else:
-        print("No documentation artifact was produced yet.")
-
-    # ========================================================
-    # Deployment
-    # ========================================================
-
-    banner("9. DEPLOYMENT VALIDATION")
-
-    deployment = getattr(flow.state, "deployment_validation", None)
-
-    if deployment:
-        print_value("Deployment validation", deployment)
-
-        print(
-            """
-Deployment validation should demonstrate:
-
-  ✓ Required environment variables
-  ✓ Deployment configuration
-  ✓ Startup checks
-  ✓ Health checks
-  ✓ Configuration validation
-  ✓ Deployment checklist
-"""
-        )
-
-    else:
-        print("No deployment validation artifact was produced yet.")
-
-    # ========================================================
-    # Final state
-    # ========================================================
-
-    banner("10. COMPLETE WORKFLOW STATE")
-
-    print("Final state object:")
-
-    try:
-        if hasattr(flow.state, "model_dump"):
-            pprint(flow.state.model_dump())
-
-        elif hasattr(flow.state, "dict"):
-            pprint(flow.state.dict())
-
-        else:
-            pprint(flow.state)
-
-    except Exception as exc:
-        print(f"Could not serialize state: {exc}")
-
-    # ========================================================
-    # Pipeline health
-    # ========================================================
-
-    banner("11. PIPELINE HEALTH CHECK")
-
-    check(
-        "Workflow object created",
-        flow is not None,
-    )
-
-    check(
-        "Feature request available",
-        bool(getattr(flow.state, "feature_request", "")),
-    )
-
-    check(
-        "Repository path available",
-        bool(getattr(flow.state, "repo_path", "")),
-    )
-
-    check(
-        "Architecture produced",
-        bool(getattr(flow.state, "architecture", None)),
-    )
-
-    check(
-        "Technical plan produced",
-        bool(getattr(flow.state, "tickets", None)),
-    )
-
-    check(
-        "Implementation results produced",
-        bool(getattr(flow.state, "worker_results", None)),
-    )
-
-    check(
-        "Quality report produced",
-        bool(getattr(flow.state, "quality_report", None)),
-    )
-
-    check(
-        "Documentation produced",
-        bool(getattr(flow.state, "documentation", None)),
-    )
-
-    check(
-        "Deployment validation produced",
-        bool(getattr(flow.state, "deployment_validation", None)),
-    )
-
-    # ========================================================
-    # Final summary
-    # ========================================================
-
-    banner("12. DEMO COMPLETE")
+    banner("REALITY CHECK")
 
     print(
-        """
-Software Factory architecture demonstrated:
-
-  FEATURE
-     │
-     ▼
-  ARCHITECT
-     │
-     │ architecture / interfaces / deployment / ADRs
-     ▼
-  TECH LEAD
-     │
-     │ tickets / acceptance criteria / dependencies
-     ▼
-  CODING WORKERS
-     │
-     │ parallel implementation
-     ▼
-  QA
-     │
-     │ tests / static analysis / quality report
-     ▼
-  DOCUMENTATION
-     │
-     │ README / API docs / runbook
-     ▼
-  DEPLOYMENT VALIDATION
-     │
-     │ configuration / checks / deployment readiness
-     ▼
-  COMPLETED SOFTWARE CHANGE
-
-This is the complete architecture we are building toward.
-"""
+        "Checked by git and pytest, not by the agents. The agents' reports can\n"
+        "claim changes that never happened; these checks cannot.\n"
     )
 
-    print("\nRaw CrewAI result:")
-    pprint(result)
+    missing = [name for _, name in ARTIFACTS if not (repo / "docs" / "factory" / name).exists()]
+    check("All six artifacts written", not missing, ", ".join(missing))
 
-    print("\n")
-    print("=" * 80)
-    print("END OF DEMO")
-    print("=" * 80)
+    code_files = changed_code_files(repo)
+    check("Code changed in the repository", bool(code_files), ", ".join(code_files))
+
+    test_run = run_command(
+        f"PYTHONDONTWRITEBYTECODE=1 {sys.executable} -m pytest -q -p no:cacheprovider",
+        cwd=str(repo),
+    )
+    summary = (test_run["stdout"].strip().splitlines() or ["no output"])[-1]
+    check("Tests pass", test_run["success"], summary)
+
+    test_file = repo / "test_greeting.py"
+    farewell_test = test_file.exists() and "def test_farewell" in test_file.read_text(
+        encoding="utf-8"
+    )
+    check("A test for farewell() exists", farewell_test)
+
+    print(
+        f"""
+Read the artifacts in {repo / "docs" / "factory"}.
+Documentation and the deployment checklist are free text and may describe
+things that do not exist; compare them with the code.
+
+To run the demo again, delete {repo}
+(or, if you committed, just run it again: it switches back to main).
+"""
+    )
 
 
 if __name__ == "__main__":

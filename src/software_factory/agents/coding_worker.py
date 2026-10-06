@@ -1,6 +1,6 @@
 from crewai import Agent, Crew, Task
 
-from software_factory.llm import local_llm
+from software_factory.llm import coder_llm
 from software_factory.tools.crew_tools import create_write_tool
 from software_factory.tools.filesystem import read_repository
 
@@ -22,7 +22,7 @@ def create_coding_worker(
             "boundaries, write tests, and never modify unrelated "
             "parts of the repository."
         ),
-        llm=local_llm,
+        llm=coder_llm,
         tools=[create_write_tool(repo_path)],
         verbose=True,
         allow_delegation=False,

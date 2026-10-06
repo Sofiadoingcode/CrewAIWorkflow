@@ -2,7 +2,7 @@ import sys
 
 from crewai import Agent, Crew, Task
 
-from software_factory.llm import local_llm
+from software_factory.llm import reasoning_llm
 from software_factory.tools.filesystem import read_repository
 from software_factory.tools.shell import run_command
 
@@ -25,13 +25,18 @@ def run_qa(
             "You are a senior QA engineer responsible for determining "
             "whether an implementation satisfies its requirements."
         ),
-        llm=local_llm,
+        llm=reasoning_llm,
         verbose=True,
         allow_delegation=False,
     )
 
     test_run = run_command(
-        f"{sys.executable} -m pytest -q",
+        f"PYTHONDONTWRITEBYTECODE=1 {sys.executable} -m pytest -q -p no:cacheprovider",
+        cwd=repo_path,
+    )
+
+    lint_run = run_command(
+        f"{sys.executable} -m ruff check --no-cache .",
         cwd=repo_path,
     )
 
@@ -66,6 +71,11 @@ Test run (pytest, actually executed):
 {test_run["stdout"]}
 {test_run["stderr"]}
 
+Static analysis (ruff, actually executed):
+
+{lint_run["stdout"]}
+{lint_run["stderr"]}
+
 Validate:
 
 1. Unit tests
@@ -82,7 +92,7 @@ Validate:
 IMPORTANT:
 
 Do not claim that a test passed unless it was actually executed.
-Base all test results ONLY on the test run above.
+Base all test and static analysis results ONLY on the runs above.
 """,
         expected_output="""
 Quality report containing:

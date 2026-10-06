@@ -1,6 +1,6 @@
 from crewai import Agent, Crew, Task
 
-from software_factory.llm import local_llm
+from software_factory.llm import reasoning_llm
 from software_factory.tools.filesystem import read_repository
 
 
@@ -22,7 +22,7 @@ def run_documentation(
             "You are an experienced technical writer who documents "
             "software systems for developers and operators."
         ),
-        llm=local_llm,
+        llm=reasoning_llm,
         verbose=True,
         allow_delegation=False,
     )

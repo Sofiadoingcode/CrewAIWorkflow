@@ -1,6 +1,10 @@
+from datetime import datetime
+
 from crewai.flow.flow import Flow, start, listen
 
 from .state import WorkflowState
+from .tools.filesystem import write_file
+from .tools.git import create_branch, git
 from .implementation import run_parallel_workers
 
 from .agents.architect import run_architect
@@ -12,8 +16,27 @@ from .agents.deployment import run_deployment
 
 class SoftwareFactoryFlow(Flow[WorkflowState]):
 
+    def save_artifact(self, name, content):
+
+        path = write_file(
+            self.state.repo_path,
+            f"docs/factory/{name}",
+            str(content),
+        )
+
+        self.state.artifacts[name] = path
+
     @start()
     def architecture_phase(self):
+
+        branch = "factory/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        result = create_branch(self.state.repo_path, branch)
+
+        if result["success"]:
+            print(f"Working on branch {branch}")
+        else:
+            print(f"Could not create branch {branch}: {result['stderr'].strip()}")
 
         print("\n" + "=" * 80)
         print("PHASE 1 — ARCHITECTURE")
@@ -25,6 +48,8 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
         )
 
         self.state.architecture = architecture
+
+        self.save_artifact("architecture.md", architecture["proposal"])
 
         return architecture
 
@@ -43,6 +68,8 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
 
         self.state.tickets = [tickets]
 
+        self.save_artifact("tickets.md", tickets["plan"])
+
         return tickets
 
     @listen(planning_phase)
@@ -58,6 +85,14 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
         )
 
         self.state.worker_results = results
+
+        self.save_artifact(
+            "implementation.md",
+            "\n\n".join(
+                f"# {result['worker']}\n\n{result['result']}"
+                for result in results
+            ),
+        )
 
         return results
 
@@ -78,6 +113,8 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
 
         self.state.quality_report = report
 
+        self.save_artifact("quality_report.md", report["report"])
+
         return report
 
     @listen(quality_phase)
@@ -97,6 +134,8 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
 
         self.state.documentation = documentation
 
+        self.save_artifact("documentation.md", documentation["report"])
+
         return documentation
 
     @listen(documentation_phase)
@@ -115,5 +154,39 @@ class SoftwareFactoryFlow(Flow[WorkflowState]):
         )
 
         self.state.deployment_validation = deployment
+
+        self.save_artifact("deployment_checklist.md", deployment["report"])
+
+        return deployment
+
+    @listen(deployment_phase)
+    def review_phase(self, deployment):
+
+        print("\n" + "=" * 80)
+        print("REVIEW — CHANGES IN TARGET REPOSITORY")
+        print("=" * 80)
+
+        repo_path = self.state.repo_path
+
+        if not git(repo_path, "add", "-A")["success"]:
+            print("Target repository is not a git repository, nothing to review.")
+            return deployment
+
+        print(git(repo_path, "diff", "--cached", "--stat")["stdout"])
+        print(git(repo_path, "diff", "--cached")["stdout"])
+
+        answer = input("Commit these changes? (y/n): ").strip().lower()
+
+        if answer == "y":
+            result = git(
+                repo_path,
+                "commit",
+                "-m",
+                f"Software factory: {self.state.feature_request.strip()}",
+            )
+            print(result["stdout"] or result["stderr"])
+        else:
+            git(repo_path, "reset")
+            print("Not committed. The changes are left in the working tree.")
 
         return deployment
