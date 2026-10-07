@@ -1,67 +1,26 @@
 # Software Factory (CrewAI)
 
+The CrewAI candidate in Group F's comparison of local multi-LLM coding
+workflows (LLM Mandatory 1). The other candidate, OpenHands, is in
+[AerrowV/llm-mandatory-assignment-01](https://github.com/AerrowV/llm-mandatory-assignment-01).
+Both use the same six roles, the same two models and the same two endpoints.
+
 Contents: [Setup](#1-setup) · [Run](#2-run) · [How it works](#3-how-it-works) ·
 [Changes](#4-changes-since-the-initial-commit) · [Runs and results](#5-runs-and-results) ·
-[Findings](#6-findings) · [Requirements](#7-requirements-status) ·
-[Open items](#8-open-items)
+[Findings](#6-findings) · [Requirements](#7-requirements-status)
 
 ---
 
 ## 1. Setup
 
-**Requirements:** macOS or Linux, ~10 GB free RAM, Python 3.11/3.12,
-[uv](https://docs.astral.sh/uv/), [Ollama](https://ollama.com/download), git.
+Install, the two endpoints, the models and the demo are in [SETUP.md](SETUP.md).
 Tested on a 16 GB Apple Silicon MacBook, CrewAI 1.15.22, Python 3.12.
-
-**Install** (the dev extra installs pytest and ruff, which QA runs):
-
-```bash
-git clone https://github.com/Sofiadoingcode/CrewAIWorkflow
-cd CrewAIWorkflow
-uv sync --extra dev
-```
-
-**Two model endpoints.** Both listen on localhost only and share the model
-store, so models are pulled once.
-
-| Endpoint | Address | Model | Roles |
-|---|---|---|---|
-| 1 | `localhost:11434` | qwen2.5 3B, 16k context | Architect, Tech Lead, QA, Documentation, Deployment |
-| 2 | `localhost:11435` | llama3.1 8B, 16k context | the two coding workers |
-
-Endpoint 1 is the normal Ollama (app or `ollama serve`). Endpoint 2 is
-started by hand in its own terminal and left running:
-
-```bash
-OLLAMA_HOST=127.0.0.1:11435 ollama serve
-```
-
-Pull the models and create the 16k-context versions (once). The Modelfiles
-are needed: Ollama's default context is too small for the later phases and
-it truncates the prompt without an error.
-
-```bash
-ollama pull qwen2.5:3b
-ollama pull llama3.1
-ollama create qwen2.5-3b-16k -f Modelfile.qwen
-ollama create llama3.1-16k -f Modelfile
-```
+Extra details:
 
 **Configuration.** `src/software_factory/llm.py` defines `reasoning_llm`
-(endpoint 1) and `coder_llm` (endpoint 2). URL and model come from `.env`;
-without a `.env` the defaults below are used.
-
-```bash
-cp .env.example .env
-```
-```
-ENDPOINT_1_URL=http://localhost:11434
-ENDPOINT_1_MODEL=qwen2.5-3b-16k:latest
-ENDPOINT_2_URL=http://localhost:11435
-ENDPOINT_2_MODEL=llama3.1-16k:latest
-```
-
-Which role uses which endpoint is set by `llm=` in each file in
+(endpoint 1, qwen2.5 3B) and `coder_llm` (endpoint 2, llama3.1 8B). URL and
+model come from `.env`; without a `.env` the defaults in `.env.example` are
+used. Which role uses which endpoint is set by `llm=` in each file in
 `src/software_factory/agents/`. temperature 0.2 and max_tokens 2048 are set
 in `llm.py`.
 
@@ -96,22 +55,9 @@ The `.gitignore` matters: the review step runs `git add -A`.
 
 ## 2. Run
 
-### Demo (no setup of a target repo needed)
-
-From the `CrewAIWorkflow` folder, with both endpoints running:
-
-```bash
-uv run python -m software_factory.demo            # uses crewai-demo next to CrewAIWorkflow
-uv run python -m software_factory.demo ~/my-demo  # or another folder
-```
-
-The demo creates the target repo itself (`greeting.py` with `greet(name)`
-and one test) if the folder does not exist, runs the six phases with the
-farewell task below, and asks y/n at the review step. It ends with a
-reality check done by git and pytest, not by the agents: all six artifacts
-written, code changed, tests pass, a farewell test exists. To run it again,
-answer n and delete the folder, or answer y and run again (it switches back to
-`main`).
+The demo is described in [SETUP.md](SETUP.md). It uses a folder `crewai-demo`
+next to `CrewAIWorkflow`; another folder can be given as an argument:
+`uv run python -m software_factory.demo ~/my-demo`.
 
 ### Your own repo and task
 
@@ -127,7 +73,7 @@ Feature request: Add a function farewell(name) in greeting.py that returns "Good
 ```
 
 Use an absolute path. The request is one line; name the files and keep it small.
-A run takes 7–16 minutes with two endpoints, depending on the task (about 20
+A run takes 7–19 minutes with two endpoints, depending on the task (about 20
 with the 8B model for every role).
 
 | Step | Who | Output in the target repo |
@@ -212,8 +158,9 @@ git and shell, and a demo, with `llama3.1` on one Ollama endpoint. Problems foun
 | `Modelfile`, `Modelfile.qwen` | New: 16k-context versions of llama3.1 and qwen2.5 3B |
 | `.env.example` | New: endpoint URLs and models |
 | `.gitignore` | New: `.venv`, `.env`, `__pycache__`, `*.pyc`, `egg-info`, `.idea` |
-| `README.md` | Was empty; now setup, run guide, changes, runs, findings |
-| `runs/` | New: logs of runs 5–7 and run 7's output |
+| `README.md` | Was empty; now how it works, changes, runs, findings |
+| `SETUP.md` | New: setup and demo guide |
+| `runs/` | New: logs of runs 5–8 and the output of runs 7 and 8 |
 | removed from git | 32 `.pyc`, `egg-info` and `.idea` files (still ignored locally) |
 
 Unchanged: `state.py`, `implementation.py`, `test_flow.py`, `tools/git.py`,
@@ -234,7 +181,7 @@ Unchanged: `state.py`, `implementation.py`, `test_flow.py`, `tools/git.py`,
 | 8 | QA also runs `ruff check`; pytest/ruff run without cache files | static analysis requirement |
 | 9 | Each phase's output saved to `docs/factory/*.md` and `state.artifacts`; `read_repository()` skips `docs/factory/` | artifacts as files, without feeding agents their own output twice |
 | 10 | Branch `factory/<timestamp>` before phase 1; review phase shows the diff and asks before committing | control + reviewable diffs |
-| 11 | Two endpoints: `reasoning_llm` / `coder_llm` in `llm.py` from `.env`, `Modelfile.qwen`, `.env.example`, `test_llm` checks both (2026-10-06) | match the group synopsis: same models and roles as the OpenHands setup |
+| 11 | Two endpoints: `reasoning_llm` / `coder_llm` in `llm.py` from `.env`, `Modelfile.qwen`, `.env.example`, `test_llm` checks both (2026-10-06) | same models and roles as the OpenHands setup, for a fair comparison |
 | 12 | `demo.py` rewritten: creates its own target repo, runs the farewell task, ends with a git/pytest reality check (the old one targeted a missing `../my-project` with a JWT task, described unbuilt worktrees, and marked phases PASS for producing any text) | a demo a third party can run |
 
 Cleanup (2026-10-06): the 32 `.pyc`, `egg-info` and `.idea` files from the
@@ -246,9 +193,10 @@ the notes files were merged into this README.
 ## 5. Runs and results
 
 Runs 1–6 against a tiny test repo (one function, one test), task: add a
-function with a test. Run 7: a calculator from an empty repo. Runs 1–5:
-llama3.1 8B for every role on one endpoint. Runs 6–7: two endpoints. Runs 1–4
-are from notes taken at the time; full terminal logs of runs 5–7 are in `runs/`.
+function with a test. Run 7: a calculator from an empty repo. Run 8: the same
+calculator with the OpenHands spec and tests. Runs 1–5:
+llama3.1 8B for every role on one endpoint. Runs 6–8: two endpoints. Runs 1–4
+are from notes taken at the time; full terminal logs of runs 5–8 are in `runs/`.
 
 **Run 1 — tools given to all agents** (change 1). All 6 phases finished, **0
 tool calls**. Llama wrote calls as text (`{"name": "list_repository_files",
@@ -332,15 +280,43 @@ Output and log in `runs/run7-output/` and `runs/run7.log`.
   calculate. With a spec and fixed tests, the OpenHands pipeline got 10 of 11
   with the same models (its latest run, as reported in the group repo).
 
-| | Run 1 | Run 3 | Run 4 | Run 5 | Run 6 (2 endpoints) | Run 7 (calculator, no spec) |
-|---|---|---|---|---|---|---|
-| Tool calls | 0 | 6 | 0 | 2 (1 of 2 workers) | 4 (both workers) | 12 (both workers) |
-| Files changed correctly | 0 | 2 | 0 | 2 | 2 | ops.py only |
-| Tests actually run | no | yes, 2 passed | yes, 1 passed | yes, 2 passed | yes, 2 passed | yes, 11 passed (own); hidden 6/11 |
-| QA report correct | no | yes | no (trusted workers) | partly (invented file) | yes | no (missed broken main) |
-| Invented files in analysis | yes | no | – | yes | no | invented functions, moved main() |
-| Invented content in docs/deployment | yes | yes, less | yes | yes | deployment only | requirements.txt |
-| Duration | – | ~20 min | ~20 min | ~20 min | 7.5 min | 16 min |
+**Run 8 — calculator with the OpenHands spec**, two endpoints. Same
+starting point as the OpenHands pipeline: its `TASK.md`, the two
+`NotImplementedError` stubs, `run.py`, `__init__.py` and the 11 tests (all
+failing at the start). Request: "Implement src/calc/ops.py and src/calc/cli.py
+exactly as specified in TASK.md. All tests in tests/ must pass." 19 min.
+Output and log in `runs/run8-output/` and `runs/run8.log`.
+- `TASK.md` was in every agent's prompt via `read_repository()` (checked in the log).
+- Architect and Tech Lead followed the spec: two modules, one per worker, no
+  invented components.
+- Code follows `TASK.md` closely: exact `ValueError` message, `error:` messages,
+  return codes 2 and 1. Misses only "print 5, not 5.0".
+- **Original tests: 10 of 11**, the same result and the same failing test as
+  the OpenHands pipeline. `python3 run.py add 2 3` prints `5.0`.
+- Workers: 8 real tool calls; both workers wrote all four files (`ops.py`,
+  `cli.py` and both test files), although `TASK.md` says each owns one file
+  and the tests must not be edited. `test_cli.py` only lost blank lines;
+  `test_ops.py` lost its `sys.path` setup and now passes only because
+  `test_cli.py` runs first. The 10/11 above is from the unmodified tests.
+- **QA got the real pytest output ("1 failed, 10 passed", with the
+  `'5.0' != '5'` assertion) and still reported all 11 tests as Passed.**
+  ruff: 8 errors.
+- Documentation: `pip install -r requirements.txt` (no such file). Deployment:
+  Ubuntu requirement and a Dockerfile copying the non-existent `requirements.txt`.
+- Takeaway: with the same spec and tests, CrewAI matched OpenHands exactly
+  (10/11). The difference in run 7 was the spec, not the toolchain. But the
+  run also shows that putting real test output in QA's prompt does not stop
+  QA from misreporting it.
+
+| | Run 1 | Run 3 | Run 4 | Run 5 | Run 6 (2 endpoints) | Run 7 (calculator, no spec) | Run 8 (calculator, with spec) |
+|---|---|---|---|---|---|---|---|
+| Tool calls | 0 | 6 | 0 | 2 (1 of 2 workers) | 4 (both workers) | 12 (both workers) | 8 (both workers) |
+| Files changed correctly | 0 | 2 | 0 | 2 | 2 | ops.py only | both modules, but tests edited too |
+| Tests actually run | no | yes, 2 passed | yes, 1 passed | yes, 2 passed | yes, 2 passed | yes, 11 passed (own); hidden 6/11 | yes; original tests 10/11 |
+| QA report correct | no | yes | no (trusted workers) | partly (invented file) | yes | no (missed broken main) | no (reported a failing test as passed) |
+| Invented files in analysis | yes | no | – | yes | no | invented functions, moved main() | no |
+| Invented content in docs/deployment | yes | yes, less | yes | yes | deployment only | requirements.txt | requirements.txt, Dockerfile |
+| Duration | – | ~20 min | ~20 min | ~20 min | 7.5 min | 16 min | 19 min |
 
 ---
 
@@ -363,7 +339,9 @@ Output and log in `runs/run7-output/` and `runs/run7.log`.
 7. **`git add -A`** commits whatever is in the target repo (run 5).
 
 **Detection and recovery**
-- Python runs tests and lint, so test results cannot be invented.
+- Python runs tests and lint, so the raw results are real and end up in the
+  log and QA's prompt. QA's report can still misstate them: in run 8 it
+  called a failing test passed. Only the raw output can be trusted.
 - The git diff in the review step is the only thing that catches "workers
   claimed changes but wrote nothing" (run 4). Bad run: answer n, delete the branch.
 - max_tokens stops endless generation.
@@ -372,9 +350,11 @@ Output and log in `runs/run7-output/` and `runs/run7.log`.
   each stage's expected files and re-prompts).
 
 **Testing moved out of the agent — a tradeoff.** Python, not the QA agent, runs
-pytest and ruff. Test results became impossible to fabricate, but QA is reduced
-to a reporting role: no run-fix loop, the command is fixed to pytest/ruff, and
-QA can still repeat invented claims from the workers (run 5). The OpenHands
+pytest and ruff. The raw test results became impossible to fabricate, but QA is
+reduced to a reporting role: no run-fix loop, the command is fixed to
+pytest/ruff, QA can still repeat invented claims from the workers (run 5), and
+it can misreport the real output it was given (run 8: a failing test reported
+as passed). The OpenHands
 setup converged on the same design (the orchestrator runs tests and
 `validate.sh`, agents report on the real output), which suggests it is a
 property of small local models rather than of either toolchain.
@@ -388,7 +368,9 @@ which is closer to a real multi-agent team but lets planning errors reach the
 code: `farewell.py` (run 5), duplicate tickets (run 6), and in run 7 a
 redesign that moved `main()` and broke 5 of 11 tests. Self-written tests do
 not catch this: run 7's 11 green tests included one that never called the
-code. Tradeoff: agent planning vs reliability.
+code. Given the same `TASK.md` and tests (run 8), CrewAI matched OpenHands
+exactly: 10 of 11, the same failing test. The spec, not the toolchain,
+explains the difference. Tradeoff: agent planning vs reliability.
 
 **Other points**
 - Moving deterministic work from the model to Python was the biggest single
